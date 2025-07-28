@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Calorie Tracker</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#007bff">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 20px;
+      background: var(--bg);
+      color: var(--text);
+      transition: background 0.3s, color 0.3s;
+    }
+    :root {
+      --bg: #f9f9f9;
+      --text: #000;
+      --card: #fff;
+    }
+    .dark-mode {
+      --bg: #121212;
+      --text: #fff;
+      --card: #1e1e1e;
+    }
+    h1 {
+      text-align: center;
+    }
+    input[type="text"], input[type="number"], input[type="date"] {
+      width: 48%;
+      padding: 10px;
+      margin: 5px 1%;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    button {
+      padding: 10px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    .toggle-mode {
+      float: right;
+      margin-top: -60px;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+    li {
+      padding: 10px;
+      margin: 5px 0;
+      background: var(--card);
+      border-radius: 5px;
+      display: flex;
+      justify-content: space-between;
+      border: 1px solid #ccc;
+    }
+    .total, .export {
+      text-align: center;
+      margin-top: 20px;
+      font-weight: bold;
+    }
+    canvas {
+      display: block;
+      margin: 20px auto;
+      max-width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <button class="toggle-mode" onclick="toggleDarkMode()">🌙 Toggle Dark Mode</button>
+  <h1>Calorie Tracker</h1>
+  <div>
+    <input type="text" id="food" placeholder="Food item" />
+    <input type="number" id="calories" placeholder="Calories" />
+    <input type="date" id="entryDate" />
+    <button onclick="addEntry()">Add</button>
+    <button onclick="undoLast()">↩️ Undo</button>
+  </div>
+  <ul id="entryList"></ul>
+  <div class="total">Total: <span id="totalCalories">0</span> calories</div>
+  <div class="export">
+    <button onclick="exportCSV()">📤 Export CSV</button>
+  </div>
+  <canvas id="calorieChart" width="400" height="200"></canvas>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    let entries = JSON.parse(localStorage.getItem('calorieEntries')) || [];
+    let darkMode = JSON.parse(localStorage.getItem('darkMode')) || false;
+    let undoStack = [];
+    function updateUI() {
+      const entryList = document.getElementById('entryList');
+      const totalSpan = document.getElementById('totalCalories');
+      entryList.innerHTML = '';
+      let total = 0;
+      entries.forEach((entry, index) => {
+        const li = document.createElement('li');
+        li.innerHTML = `${entry.date} - ${entry.food} - ${entry.calories} cal
+          <button onclick="deleteEntry(${index})" style="margin-left:10px;background:red;">✕</button>`;
+        entryList.appendChild(li);
+        total += entry.calories;
+      });
+      totalSpan.textContent = total;
+      localStorage.setItem('calorieEntries', JSON.stringify(entries));
+      renderChart();
+    }
+    function addEntry() {
+      const food = document.getElementById('food').value.trim();
+      const calories = parseInt(document.getElementById('calories').value);
+      const date = document.getElementById('entryDate').value || new Date().toISOString().slice(0,10);
+      if (!food || isNaN(calories)) return;
+      const newEntry = { food, calories, date };
+      entries.push(newEntry);
+      undoStack.push(newEntry);
+      document.getElementById('food').value = '';
+      document.getElementById('calories').value = '';
+      updateUI();
+    }
+    function deleteEntry(index) {
+      undoStack.push(entries[index]);
+      entries.splice(index, 1);
+      updateUI();
+    }
+    function undoLast() {
+      const last = undoStack.pop();
+      if (last) {
+        entries.push(last);
+        updateUI();
+      }
+    }
+    function toggleDarkMode() {
+      document.body.classList.toggle('dark-mode');
+      darkMode = !darkMode;
+      localStorage.setItem('darkMode', JSON.stringify(darkMode));
+    }
+    function exportCSV() {
+      let csv = 'Date,Food,Calories\n';
+      entries.forEach(e => csv += `${e.date},${e.food},${e.calories}\n`);
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'calorie_log.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+    function renderChart() {
+      const data = {};
+      entries.forEach(e => {
+        data[e.date] = (data[e.date] || 0) + e.calories;
+      });
+      const ctx = document.getElementById('calorieChart').getContext('2d');
+      if (window.calorieChart) window.calorieChart.destroy();
+      window.calorieChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: Object.keys(data),
+          datasets: [{
+            label: 'Calories per Day',
+            data: Object.values(data),
+            backgroundColor: '#007bff'
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: {
+              beginAtZero: true
+            }
+          }
+        }
+      });
+    }
+    if (darkMode) document.body.classList.add('dark-mode');
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('service-worker.js');
+      });
+    }
+    updateUI();
+  </script>
+</body>
+</html>
